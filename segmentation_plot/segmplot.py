@@ -1,10 +1,11 @@
 import itertools
 import numpy as np
+import monai
 import matplotlib.pyplot as plt
 import matplotlib.colors as colors
 from matplotlib import cm
 from skimage import measure
-import monai
+
 
 from typing import Any, List, Sequence, Tuple, Union, Optional
 
