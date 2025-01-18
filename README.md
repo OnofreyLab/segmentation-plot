@@ -3,7 +3,7 @@
 ## Description
 A Python tool to display high quality image segmentation results as a contour plots using matplotlib functionality.
 
-![Example Segmentation Visualization](/assets/example.png "Example contour plot of segmentations on synthetic image.")
+![Example Segmentation Visualization](/assets/histopath_example.png "Example contour plot of segmentations on a histopathology image.")
 
 
 ## Installation
@@ -17,23 +17,31 @@ pip install git+https://github.com/OnofreyLab/segmentation-plot.git
 ## Usage
 
 ```python
-import segmplot
+from segmentation_plot import segmplot
 
-# Image data in I and segmentation images S
+# Image data in I and segmentation image S (in one-hot encoding)
 
-plot_segm = segmplot.PlotSegmentation(
-    slice_axis=3, 
-    num_slices=5, 
-    slice_spacing=3, 
+plt.figure('example', (5, 5))
+segmplot.plot_segmentation(
+    image=I, 
+    segm=[S], 
+    segm_cmap=[plt.colormaps['tab10']],
+    smooth_sigma=2.0,
+    threshold=0.7,
+    linewidth=2.0, 
+    alpha=1.0, 
+    linestyle='-',
 )
-
-plot_segm(I, [S], cmap_name=['tab10'])
+plt.title("Histopath Example")
+# Save as a PDF to utilize the vector graphics of the contour plots.
+plt.savefig('histopath_example.pdf', bbox_inches='tight')
+plt.show()
 
 ```
 
 ## Tutorial
 
-See the Jupyter Notebook [tutorial](https://github.com/OnofreyLab/segmentation-plot/blob/main/notebooks/example.ipynb).
+See the Jupyter Notebook [tutorial](https://github.com/OnofreyLab/segmentation-plot/blob/main/notebooks/example_histopath.ipynb).
 
 
 
