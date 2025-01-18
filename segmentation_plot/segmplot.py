@@ -102,8 +102,107 @@ def plot_contour(
             
             
 
-            
-class PlotSegmentation():
+def plot_segmentation(
+    image: np.ndarray, 
+    segm: Union[Sequence[Optional[np.ndarray]], Optional[np.ndarray]] = None, 
+    rotate: Optional[bool] = True,
+    smooth_sigma: Optional[float] = None,
+    threshold: Optional[float] = 0.5,
+    image_cmap: Optional[plt.cm.ScalarMappable] = None,
+    segm_cmap: Optional[plt.cm.ScalarMappable] = [plt.colormaps['tab10']],
+    include_background: Optional[bool] = False,
+    image_vmin: Optional[float] = None,
+    image_vmax: Optional[float] = None,
+    **kwargs
+) -> None:
+    """
+    Plots a 2D image with optional segmentation label images as contour plot(s). This method assumes 2D images/labels in 
+    channel-first format CHW, where C is the number of channels and (H,W) is the (height,width), respectively.
+
+    Args:
+        image: (ndarray) the background image to display, assumes shape CHW (2D image).
+        segm: (list of ndarray) of segmentation images to display as contour overlays, assumes shapes of DHW, where 
+            D is one-hot encoding (2D image).
+        rotate: (bool) rotate the displayed images and contours 90 degrees (flips the x and y axes).
+        smooth_sigma: (float) value of the Guassian smoothing kernel to use to smooth the label image in 2D. Default is None.
+        threshold: (float) value to threshold the smoothed label map. This allows for creating an offset of the contours to 
+            avoid overlapping contours, which can appear confusing.
+        image_cmap: (plt.colormap) colormap for the background image. Default is None (default matplotlib imshow colormap 
+            functionality, e.g. grayscale for single channel images and color for RGB images.)
+        segm_cmap: (list of plt.colormap) colormaps for the segmentation contours. Default is 'tab10' colormap.
+        include_background: (bool) include the 0-th label as a contour. Default is False (ignore the background label).
+        image_vmin: (float) minimum colormap value for the background image, which is useful to set a common colormap range
+            across multiple plots. Default is None (min value is set to the image's min value).
+        image_vmax: (float) maximum colormap value for the background image, which is useful to set a common colormap range
+            across multiple plots. Default is None (max value is set to the image's max value).
+        **kwargs: additional parameters passed to the matplotlib's contour plot function. This can be used to control the 
+            following:
+            'linewidth': (float) the width of the contours
+            'alpha': (float) the transparency of the contours
+            'linestyle': (string) the style of the contours
+    """
+
+    # Check for 2D images (with 3 dims)
+    if image.ndim > 3:
+        raise ValueError(f"Image must be 2D (dim <=3), got image.ndim={image.ndim}.")
+    if segm is not None:
+        for i, s in enumerate(segm):
+            if s.ndim > 3:
+                raise ValueError(f"segm[{i}] must be 2D (dim <=3), got segm[{i}].ndim={s.ndim}.")
+
+
+    # Convert the CHW to HWC
+    image = np.squeeze(np.moveaxis(image, 0, -1))
+
+    if rotate:
+        image = np.rot90(image)
+
+    # Display the image
+    plt.imshow(
+        image, 
+        vmin=image_vmin,
+        vmax=image_vmax,
+        cmap=image_cmap,
+    )
+    plt.axis('off')
+
+    if segm!=None:
+
+        # Remove the background (first) channel in the segmentation, if desired
+        if not include_background:
+            for i, s in enumerate(segm):
+                segm[i] = s[1:,...]
+
+        if smooth_sigma is not None:
+
+            smoother = monai.transforms.GaussianSmooth(sigma=smooth_sigma)
+            thresholder = monai.transforms.ThresholdIntensity(threshold=threshold, above=True, cval=0.0)
+
+        # Iterate over all the segmentations in the list
+        for j, s in enumerate(segm):
+
+            if smooth_sigma is not None:
+                s = thresholder(smoother(s))
+
+            # Iterate over all channels in the segmentation
+            for c in range(s.shape[0]):
+                s_c = np.squeeze(s[c,...])
+
+                if rotate:
+                    s_c = np.rot90(s_c)
+
+                plot_contour(
+                    s_c, 
+                    level=[1], # TODO: check for floating values?
+                    color=segm_cmap[j](c),
+                    **kwargs
+                )
+
+
+
+
+
+ class PlotSegmentation():
     """
     Assumes channel first 3D arrays of shape (CHWD). For labels this assumes segmentations are in one-hot encodings,
     where the number of classes is C.
@@ -121,19 +220,20 @@ class PlotSegmentation():
     
     """
     
-    # TODO: add option for background cmap
     def __init__(
         self, 
         slice_axis: Optional[int] = -1, 
         num_slices: Optional[int] = 1, 
         slice_spacing: Optional[int] = 1, 
         plot_title: Optional[bool] = True,
-#         line_width: Optional[float] = 1.0,
-#         alpha: Optional[float] = 1.0,
         rotate: Optional[bool] = True,
-        labels: Union[Sequence[Optional[int]], Optional[int]] = None,
+        # labels: Union[Sequence[Optional[int]], Optional[int]] = None,
         include_background: Optional[bool] = False,
         slice_indexes: Union[Sequence[Optional[int]], Optional[int]] = None,
+        # smooth_sigma: Optional[float] = None,
+        # threshold: Optional[float] = 0.0,
+        smooth_sigma = None,
+        threshold = 0.0,
         **kwargs
     ) -> None:
     
@@ -143,10 +243,10 @@ class PlotSegmentation():
         self.slice_axis = slice_axis
         self.rotate = rotate
         self.plot_title = plot_title
-#         self.line_width = line_width
-#         self.alpha = alpha
-        self.labels = labels # TODO
+        # self.labels = labels # TODO
         self.slice_indexes = slice_indexes
+        self.smooth_sigma = smooth_sigma
+        self.threshold = threshold
         self.kwargs = kwargs
 
         
@@ -155,8 +255,8 @@ class PlotSegmentation():
         self, 
         image: np.ndarray, 
         segm: Union[Sequence[Optional[np.ndarray]], Optional[np.ndarray]] = None, # TODO: ensure this takes single value not just lists!
+        segm_cmap: Union[Sequence[Optional[str]], Optional[str]] = None,
         cmap_name: Union[Sequence[Optional[str]], Optional[str]] = None,
-        contour_width: Union[Sequence[Optional[str]], Optional[str]] = 1,
         bbox_image: Optional[np.ndarray] = None
     ) -> None:
         """
@@ -197,26 +297,26 @@ class PlotSegmentation():
         
         
         # Check for label values to use
-        if segm!=None:
-            # Remove the background (first) channel in the segmentation, if desired
-            if not self.include_background:
-                for i, s in enumerate(segm):
-                    segm[i] = s[1:,...]
-#                     print('segm[{:d}].shape, {}'.format(i, segm[i].shape))
+        # if segm is not None:
+#             # Remove the background (first) channel in the segmentation, if desired
+#             if not self.include_background:
+#                 for i, s in enumerate(segm):
+#                     segm[i] = s[1:,...]
+# #                     print('segm[{:d}].shape, {}'.format(i, segm[i].shape))
             
             
-            cmap = [colors.ListedColormap(['red'])]*len(segm)
-            if cmap_name is not None:
-                cmap = list()
-                for c in cmap_name:
-                    cmap.append(cm.get_cmap(c))
-#             print('cmap', cmap)
+#             cmap = [colors.ListedColormap(['red'])]*len(segm)
+#             if cmap_name is not None:
+#                 cmap = list()
+#                 for c in cmap_name:
+#                     cmap.append(cm.get_cmap(c))
+# #             print('cmap', cmap)
             
-            segm_values = None
-            if self.labels is None:
-                segm_values = np.arange(segm[0].shape[0])
-            else:
-                segm_values = self.labels
+            # segm_values = None
+            # if self.labels is None:
+            #     segm_values = np.arange(segm[0].shape[0])
+            # else:
+            #     segm_values = self.labels
             
             
         slice_axis_start = 2*slice_axis
@@ -253,60 +353,31 @@ class PlotSegmentation():
         # Create the subplots object
 #         fig, ax = plt.subplots(1, len(slices))
         
-        # Extract the desired slices
+        # Plot for each slice
         for i, idx in enumerate(slices):
-#             print('idx', idx)
             disp_slice = np.take(image, indices=idx, axis=slice_axis)
-            
-            # Get the first channel
-            disp_slice = disp_slice[0,...]
-            
-            if self.rotate:
-                disp_slice = np.rot90(disp_slice)
-                
-#             print('disp_slice.shape', disp_slice.shape)
-                
-            ax = plt.subplot(1, len(slices), i+1)
-#             ax[i].imshow(
-            plt.imshow(
-                disp_slice, 
-                vmin=image_min,
-                vmax=image_max,
-                cmap=plt.cm.gray,
-            )
-            
-            if self.plot_title:
-                plt.title('Slice {}'.format(idx))
-            plt.axis('off')
-#                 ax[i].set_title('Slice {}'.format(idx))
-#             ax[i].axis('off')
+            segm_slice = None
 
-            
-            if segm!=None:
+            if segm is not None:
+                segm_slices = []
                 # Iterate over all the segmentations in the list
                 for j, s in enumerate(segm):
-                    
+                    s_slice = np.take(s, indices=idx, axis=slice_axis)
+                    segm_slices.append(s_slice)
 
-                    segm_slice = np.take(s, indices=idx, axis=slice_axis)
-#                     print('segm_slice.shape', segm_slice.shape)
+            ax = plt.subplot(1, len(slices), i+1)
+            plot_segmentation(
+                image=disp_slice,
+                segm=segm_slices,
+                image_cmap=None,
+                segm_cmap=segm_cmap,
+                rotate=self.rotate,
+                include_background=self.include_background,
+                smooth_sigma=self.smooth_sigma,
+                threshold=self.threshold,
+                **self.kwargs
+            )
+            if self.plot_title:
+                plt.title('Slice {}'.format(idx))
 
-                    # Iterate over all channels in the segmentation
-                    for c in range(segm_slice.shape[0]):
-                        s_c = segm_slice[c,...]
-#                         print('c, s_c.shape', c, s_c.shape)
 
-                        if self.rotate:
-                            s_c = np.rot90(s_c)
-                            
-                        plot_contour(
-                            s_c, 
-                            level=[1], # TODO: check for floating values?
-                            color=cmap[j](c),
-#                             width=self.line_width,
-#                             alpha=self.alpha
-                            **self.kwargs
-                        )
-
-                    
-        # Return the fig and ax object handles
-#         return fig, ax

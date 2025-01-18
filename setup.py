@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setuptools.setup(
     name='segmentation-plot',
-    version='0.2',
+    version='0.3',
     author='Onofrey Lab',
     author_email='john.onofrey@yale.edu',
     description='Visualize image segmentations as contours using matplotlib.',
